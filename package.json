@@ -1,0 +1,56 @@
+{
+  "name": "@comapeo/base32",
+  "version": "1.0.0",
+  "description": "A fast, dependency-free encoder/decoder for Douglas Crockford's Base 32, operating on Uint8Arrays for browser and Node compatibility.",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "test": "run-s test:types test:lint test:vitest",
+    "test:types": "tsc --noEmit",
+    "test:lint": "eslint",
+    "test:vitest": "vitest run",
+    "coverage": "vitest run --coverage --project node",
+    "bench": "node benchmark.js",
+    "format": "prettier --write .",
+    "prepack": "rimraf dist && tsc -p tsconfig.build.json"
+  },
+  "keywords": [
+    "base32",
+    "crockford",
+    "encode",
+    "decode",
+    "uint8array",
+    "browser"
+  ],
+  "author": "Gregor MacLennan <gmaclennan@gmail.com>",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@vitest/browser": "^4.0.7",
+    "@vitest/browser-playwright": "^4.0.7",
+    "@vitest/coverage-istanbul": "^4.0.7",
+    "base-x": "^5.0.1",
+    "base32": "0.0.7",
+    "crockford-base32": "^2.1.0",
+    "eslint": "^10.4.1",
+    "globals": "^17.6.0",
+    "nanobench": "^3.0.0",
+    "npm-run-all": "^4.1.5",
+    "playwright": "^1.56.1",
+    "prettier": "^3.6.2",
+    "rfc4648": "^1.5.4",
+    "rimraf": "^6.1.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.7",
+    "z32": "^1.1.0"
+  }
+}
