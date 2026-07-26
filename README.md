@@ -63,29 +63,30 @@ same one as RFC 4648), plus check symbols.
 
 ## Benchmarks
 
-100 iterations over 10,000 random buffers (0–100 bytes each) on Node 22, Linux
+100 iterations over 10,000 random buffers (0–100 bytes each) on Node 24, Linux
 x64. Lower is better; each figure is the median of three runs. Run with
 `npm run bench`.
 
 | Library                   | encode  | decode  |
 | ------------------------- | ------- | ------- |
-| z32                       | 769 ms  | 624 ms  |
-| rfc4648                   | 806 ms  | 1862 ms |
-| **@comapeo/base32**       | 1000 ms | 839 ms  |
-| base32                    | 1153 ms | 2552 ms |
-| crockford-base32          | 2000 ms | 4715 ms |
-| @scure/base (crockford)   | 3744 ms | 3421 ms |
-| @scure/base (rfc4648)     | 3878 ms | 3116 ms |
-| base-x (z-base-32)        | 8753 ms | 9784 ms |
-| `Buffer` hex (not base32) | 146 ms  | 276 ms  |
+| z32                       | 685 ms  | 583 ms  |
+| rfc4648                   | 777 ms  | 1744 ms |
+| base32                    | 1138 ms | 2625 ms |
+| **@comapeo/base32**       | 1439 ms | 838 ms  |
+| crockford-base32          | 1953 ms | 4310 ms |
+| @scure/base (crockford)   | 3500 ms | 3580 ms |
+| @scure/base (rfc4648)     | 3867 ms | 3502 ms |
+| base-x (z-base-32)        | 8801 ms | 9493 ms |
+| `Buffer` hex (not base32) | 156 ms  | 221 ms  |
 
 These numbers replace an earlier set measured on Node 24 / Apple Silicon, where
 absolute times were roughly 3× lower and `@comapeo/base32` led on both encode
-and decode. Relative standings shift with runtime and hardware — re-run the
-benchmark on your own target before drawing conclusions.
+and decode. On x64 the standings differ — notably z32 is ahead on both
+operations — so re-run the benchmark on your own target before drawing
+conclusions.
 
 `@scure/base` is measured at the released 2.2.0. Its unreleased `main` is
-substantially quicker (~2170 ms encode / ~1710 ms decode for crockford in the
+substantially quicker (~2620 ms encode / ~1880 ms decode for crockford in the
 same harness), so expect this gap to narrow in its next release.
 
 ## License
