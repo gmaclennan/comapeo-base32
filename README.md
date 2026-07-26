@@ -67,17 +67,19 @@ same one as RFC 4648), plus check symbols.
 x64. Lower is better; each figure is the median of three runs. Run with
 `npm run bench`.
 
-| Library                   | encode  | decode  |
-| ------------------------- | ------- | ------- |
-| **@comapeo/base32**       | 292 ms  | 822 ms  |
-| z32                       | 699 ms  | 585 ms  |
-| rfc4648                   | 798 ms  | 1589 ms |
-| base32                    | 1122 ms | 2649 ms |
-| crockford-base32          | 1914 ms | 4455 ms |
-| @scure/base (crockford)   | 3723 ms | 3435 ms |
-| @scure/base (rfc4648)     | 4049 ms | 3430 ms |
-| base-x (z-base-32)        | 8754 ms | 9517 ms |
-| `Buffer` hex (not base32) | 158 ms  | 208 ms  |
+| Library                            | encode  | decode  |
+| ---------------------------------- | ------- | ------- |
+| **@comapeo/base32**                | 280 ms  | 861 ms  |
+| z32                                | 710 ms  | 580 ms  |
+| rfc4648                            | 824 ms  | 1667 ms |
+| base32                             | 1166 ms | 2401 ms |
+| crockford-base32                   | 1877 ms | 4311 ms |
+| @scure/base unreleased (crockford) | 2570 ms | 1790 ms |
+| @scure/base unreleased (rfc4648)   | 2635 ms | 1965 ms |
+| @scure/base 2.2.0 (crockford)      | 3708 ms | 3884 ms |
+| @scure/base 2.2.0 (rfc4648)        | 3838 ms | 3695 ms |
+| base-x (z-base-32)                 | 9240 ms | 9780 ms |
+| `Buffer` hex (not base32)          | 161 ms  | 218 ms  |
 
 Absolute times are roughly 3× higher than on Apple Silicon; z32 remains ahead
 on decode here. Re-run the benchmark on your own target before drawing
@@ -87,9 +89,13 @@ Short inputs are the case most worth optimising, and the one these averages
 hide. Encoding a single buffer costs ~83 ns at 8 bytes and ~181 ns at 32 bytes
 (12M and 5.5M ops/s respectively).
 
-`@scure/base` is measured at the released 2.2.0. Its unreleased `main` is
-substantially quicker (~2620 ms encode / ~1880 ms decode for crockford in the
-same harness), so expect this gap to narrow in its next release.
+The "unreleased" rows are upstream `@scure/base` `main` (commit `3b06771`),
+which carries a large unmerged speed-up. It is installed from git under the
+alias `@scure/base-next`, so it arrives as TypeScript with no build step, and
+the benchmark strips its types at load. That needs a Node with type stripping
+(22.18+ or 24+); on anything older those four cases are skipped and the rest
+still run. Stripping costs ~55 ms once at import and does not affect the
+measurements, which start after every module has loaded.
 
 ## License
 

@@ -1,5 +1,8 @@
 import bench from 'nanobench'
 import { randomBytes } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { registerHooks, stripTypeScriptTypes } from 'node:module'
+import { fileURLToPath } from 'node:url'
 import * as base32 from './index.js'
 import { CrockfordBase32 } from 'crockford-base32'
 import * as z32 from 'z32'
@@ -12,6 +15,31 @@ import {
 import baseX from 'base-x'
 
 const zbase32 = baseX('ybndrfg8ejkmcpqxot1uwisza345h769')
+
+// `@scure/base-next` is the unreleased upstream `main`, installed straight from
+// git, so it ships only `index.ts` with no build step. Node can strip the types
+// but refuses to do so for files under `node_modules`, so apply Node's own
+// stripper by hand. This costs ~55 ms once at import; nothing is measured until
+// after every module has loaded, so it does not affect any timing below.
+registerHooks({
+  load(url, context, nextLoad) {
+    if (!url.endsWith('.ts')) return nextLoad(url, context)
+    const source = readFileSync(fileURLToPath(url), 'utf8')
+    return {
+      format: 'module',
+      shortCircuit: true,
+      source: stripTypeScriptTypes(source, { mode: 'strip', sourceUrl: url }),
+    }
+  },
+})
+
+/** Null when unavailable, e.g. on a Node without type stripping. */
+let scureNext = null
+try {
+  scureNext = await import('@scure/base-next/index.ts')
+} catch (err) {
+  console.error(`# skipping unreleased @scure/base: ${err.message}`)
+}
 
 const buffers = Array(1e4)
   .fill(null)
@@ -63,6 +91,22 @@ bench('@scure/base rfc4648 base32 encode 100 times', (b) => {
     for (const buf of buffers) scureBase32.encode(buf)
   b.end()
 })
+
+if (scureNext) {
+  bench('@scure/base unreleased crockford encode 100 times', (b) => {
+    b.start()
+    for (let i = 0; i < 100; i++)
+      for (const buf of buffers) scureNext.base32crockford.encode(buf)
+    b.end()
+  })
+
+  bench('@scure/base unreleased rfc4648 base32 encode 100 times', (b) => {
+    b.start()
+    for (let i = 0; i < 100; i++)
+      for (const buf of buffers) scureNext.base32.encode(buf)
+    b.end()
+  })
+}
 
 bench('base-x z-base-32 encode 100 times', (b) => {
   b.start()
@@ -127,6 +171,24 @@ bench('@scure/base rfc4648 base32 decode 100 times', (b) => {
   for (let i = 0; i < 100; i++) for (const s of encoded) scureBase32.decode(s)
   b.end()
 })
+
+if (scureNext) {
+  bench('@scure/base unreleased crockford decode 100 times', (b) => {
+    const encoded = buffers.map((buf) => scureNext.base32crockford.encode(buf))
+    b.start()
+    for (let i = 0; i < 100; i++)
+      for (const s of encoded) scureNext.base32crockford.decode(s)
+    b.end()
+  })
+
+  bench('@scure/base unreleased rfc4648 base32 decode 100 times', (b) => {
+    const encoded = buffers.map((buf) => scureNext.base32.encode(buf))
+    b.start()
+    for (let i = 0; i < 100; i++)
+      for (const s of encoded) scureNext.base32.decode(s)
+    b.end()
+  })
+}
 
 bench('base-x z-base-32 decode 100 times', (b) => {
   const encoded = buffers.map((buf) => zbase32.encode(buf))
