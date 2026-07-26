@@ -25,12 +25,14 @@ decode('edqpts-90edt7-4tbecw') // hyphens ignored, case ignored
 decode('IPLOE') // I/L -> 1, O -> 0
 ```
 
-`decode` returns a `Uint8Array`. Outputs of 65–4096 bytes are carved from an
-internal 8 KiB allocation pool (the same strategy as Node's `Buffer` pool), so
-their `byteOffset` may be non-zero, they share an `ArrayBuffer` with other
-decode results, and a pool chunk stays allocated while any result carved from
-it is referenced. This sidesteps a malloc per call that would otherwise
-dominate decode time.
+`decode` always returns a `Uint8Array`, but — like Node's `Buffer` APIs — the
+result may be a view onto a shared `ArrayBuffer` that this library uses as an
+allocation pool (this sidesteps a malloc per call that would otherwise
+dominate decode time). The bytes of the view are yours; its `.buffer` is not:
+it may have a non-zero `byteOffset`, contain other decode results, and stay
+allocated while any result in it is referenced. If you need a result backed
+by its own `ArrayBuffer` — say, to transfer it to a worker — copy it with
+`.slice()`.
 
 ### Checksums
 
