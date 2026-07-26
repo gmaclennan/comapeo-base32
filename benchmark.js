@@ -1,4 +1,5 @@
 import bench from 'nanobench'
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { registerHooks, stripTypeScriptTypes } from 'node:module'
 import { fileURLToPath } from 'node:url'
@@ -15,11 +16,10 @@ import baseX from 'base-x'
 
 const zbase32 = baseX('ybndrfg8ejkmcpqxot1uwisza345h769')
 
-// `@scure/base-next` is the unreleased upstream `main`, installed straight from
-// git, so it ships only `index.ts` with no build step. Node can strip the types
-// but refuses to do so for files under `node_modules`, so apply Node's own
-// stripper by hand. This costs ~55 ms once at import; nothing is measured until
-// after every module has loaded, so it does not affect any timing below.
+// `@scure/base-next` is unreleased upstream `main`, installed from git, so it
+// ships only `index.ts`. Node can strip the types but refuses to for files
+// under `node_modules`, so apply its stripper by hand — ~55 ms once at import,
+// before anything is measured.
 registerHooks({
   load(url, context, nextLoad) {
     if (!url.endsWith('.ts')) return nextLoad(url, context)
@@ -40,63 +40,40 @@ try {
   console.error(`# skipping unreleased @scure/base: ${err.message}`)
 }
 
-// Deterministic input generation: a SHA-256 hash chain over a fixed seed (the
-// construction of mafintosh's `random-bytes-seed`, here on Web Crypto so it
-// needs no dependency and reproduces the same bytes on any platform). Every
-// run measures identical inputs, and unlike a hand-rolled PRNG the bytes are
-// indistinguishable from real random data, so the workloads carry no
-// statistical quirks of a weak generator.
+// Deterministic input generation: a SHA-256 hash chain over a fixed seed
+// (mafintosh's `random-bytes-seed` construction, dependency-free). Every run
+// measures identical inputs, with none of the statistical quirks of a
+// hand-rolled PRNG.
 let chainState = new TextEncoder().encode('@comapeo/base32 benchmark v1')
 
-/** Advance the chain (`state = SHA-256(state)`) and return the new block. */
-async function nextChainBlock() {
-  chainState = new Uint8Array(
-    await globalThis.crypto.subtle.digest('SHA-256', chainState),
-  )
-  return chainState
-}
-
 /** @param {number} n */
-async function randomBytes(n) {
+function randomBytes(n) {
   const buf = Buffer.allocUnsafe(n)
-  let used = 0
-  while (used < n) {
-    const block = await nextChainBlock()
-    buf.set(block.subarray(0, Math.min(32, n - used)), used)
-    used += 32
+  for (let used = 0; used < n; used += 32) {
+    chainState = createHash('sha256').update(chainState).digest()
+    buf.set(chainState.subarray(0, n - used), used)
   }
   return buf
 }
 
 /** @param {number} count */
-async function makeFixedBuffers(count) {
-  const buffers = []
-  for (let i = 0; i < count; i++) buffers.push(await randomBytes(32))
-  return buffers
-}
-
-/** @param {number} count */
-async function makeMixedBuffers(count) {
-  // Sizes in [0, 100], each drawn from two chain bytes (16-bit mod 101; the
-  // modulo bias at 16 bits is ~0.1%, irrelevant for a benchmark workload).
-  const sizeBytes = await randomBytes(2 * count)
-  const buffers = []
-  for (let i = 0; i < count; i++) {
-    const size = ((sizeBytes[2 * i] << 8) | sizeBytes[2 * i + 1]) % 101
-    buffers.push(await randomBytes(size))
-  }
-  return buffers
+function makeMixedBuffers(count) {
+  // Sizes in [0, 100], from two chain bytes (16-bit mod 101; bias ~0.1%).
+  const sizeBytes = randomBytes(2 * count)
+  return Array.from({ length: count }, (_, i) =>
+    randomBytes(((sizeBytes[2 * i] << 8) | sizeBytes[2 * i + 1]) % 101),
+  )
 }
 
 /**
- * Two workloads, 10,000 buffers each: fixed 32-byte buffers (the typical
- * "encoded ID" case) and mixed random lengths of 0-100 bytes.
+ * Fixed 32-byte buffers (the typical "encoded ID" case) and mixed random
+ * lengths of 0-100 bytes.
  *
  * @type {[string, Buffer[]][]}
  */
 const workloads = [
-  ['32B', await makeFixedBuffers(1e4)],
-  ['0-100B', await makeMixedBuffers(1e4)],
+  ['32B', Array.from({ length: 1e4 }, () => randomBytes(32))],
+  ['0-100B', makeMixedBuffers(1e4)],
 ]
 
 for (const [w, buffers] of workloads) {

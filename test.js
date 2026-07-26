@@ -442,6 +442,27 @@ describe('decode allocation pool', () => {
       expect(decode(encode(randomBytes(100))).byteOffset % 8).toBe(0)
     }
   })
+
+  it('round-trips across the size-class boundaries', () => {
+    for (const n of [63, 64, 65, 4095, 4096, 4097]) {
+      const b = randomBytes(n)
+      expect(equal(decode(encode(b)), b), `size ${n}`).toBe(true)
+    }
+  })
+
+  it('validates a checksum over a pooled-size payload', () => {
+    const b = randomBytes(100)
+    expect(
+      equal(decode(encode(b, { checksum: true }), { checksum: true }), b),
+    ).toBe(true)
+  })
+
+  it('recovers after a caller transfers a pooled result buffer away', () => {
+    const first = decode(encode(randomBytes(100)))
+    structuredClone(first.buffer, { transfer: [first.buffer] })
+    const b = randomBytes(100)
+    expect(equal(decode(encode(b)), b)).toBe(true)
+  })
 })
 
 describe('large inputs', () => {
@@ -451,8 +472,8 @@ describe('large inputs', () => {
   })
 })
 
-// `encode` switches strategy above a size threshold. The two paths must agree
-// exactly, so pin their outputs against each other around the crossover.
+// `encode` switches strategy above a size threshold; pin the two paths
+// against each other around the crossover.
 describe('encode strategy threshold', () => {
   /** Straightforward reference encoder, one symbol at a time. */
   const reference = (/** @type {Uint8Array} */ u) => {

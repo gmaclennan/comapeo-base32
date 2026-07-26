@@ -88,12 +88,12 @@ const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
 /**
- * Byte size above which V8 stores a `new Uint8Array`'s data off-heap, turning
- * every construction into a malloc (and `subarray`/`.buffer` on a smaller
- * array into one too, by materialising the lazy ArrayBuffer). That malloc
- * dominates a decode profile, so larger outputs are carved out of a pooled
- * chunk instead — the same strategy as Node's `Buffer` pool, but built on a
- * plain `ArrayBuffer` so it is engine-neutral and browsers benefit too.
+ * Byte size above which V8 stores a `new Uint8Array`'s data off-heap, making
+ * every construction a malloc (and `subarray`/`.buffer` on a smaller array
+ * one too, by materialising the lazy ArrayBuffer). That malloc dominates a
+ * decode profile, so larger outputs are carved from a pooled chunk instead —
+ * Node's `Buffer`-pool strategy, on a plain `ArrayBuffer` so browsers benefit
+ * too.
  */
 const ON_HEAP_MAX = 64
 
@@ -105,20 +105,18 @@ let poolOffset = 0
 
 /**
  * Allocate the decode output: an on-heap `Uint8Array` when small enough, a
- * view onto the current pool chunk otherwise, so one malloc amortises over
- * many decodes. Outputs beyond half a chunk get their own plain allocation.
- *
- * Chunks are zero-filled at creation and only ever hold this library's decode
- * output. A pooled result shares its `ArrayBuffer` with other decode results
- * (its `byteOffset` may be non-zero), and a chunk stays allocated while any
- * result carved from it is referenced.
+ * view onto the current pool chunk otherwise; outputs beyond half a chunk get
+ * their own allocation. See {@link ON_HEAP_MAX} for why, and the README for
+ * the sharing contract.
  *
  * @param {number} n
  * @returns {Uint8Array}
  */
 function allocBytes(n) {
-  if (n <= ON_HEAP_MAX || n > POOL_SIZE >>> 1) return new Uint8Array(n)
-  if (poolOffset + n > POOL_SIZE) {
+  if (n <= ON_HEAP_MAX || n > POOL_SIZE / 2) return new Uint8Array(n)
+  // byteLength 0 means a caller transferred (detached) the chunk's buffer;
+  // without the check that would wedge every future pooled allocation.
+  if (poolOffset + n > POOL_SIZE || pool.byteLength === 0) {
     pool = new ArrayBuffer(POOL_SIZE)
     poolOffset = 0
   }
@@ -218,9 +216,7 @@ function encodeToString(bytes) {
 }
 
 /**
- * Fill a byte buffer with symbol char codes and convert it in one go. Wins
- * over {@link encodeToString} once the input is long enough to amortise the
- * `TextDecoder` call.
+ * Fill a byte buffer with symbol char codes and convert it in one go.
  *
  * @param {Uint8Array} bytes
  * @returns {string}
@@ -339,13 +335,12 @@ export function verify(input) {
  * @returns {Uint8Array}
  */
 function decodeBytes(s, end) {
-  // Exact output size, so no trailing `subarray` is ever needed (a `subarray`
-  // materialises an on-heap array's lazy ArrayBuffer, i.e. costs a malloc).
-  // `end * 5` bits yield `bitLen / 8` whole bytes; when >= 5 bits are left
-  // over a whole symbol went unpaired, which cannot be padding, so it flushes
-  // as one more byte. Non-canonical padding bits also flush, but only via the
-  // rare grow path at the bottom. Float math, not `>> 3`/`& 7`: `bitLen`
-  // overflows int32 for strings past ~429M chars, within V8's string range.
+  // Exact output size, so no trailing `subarray` (a malloc — see ON_HEAP_MAX)
+  // is ever needed. When >= 5 bits are left over, a whole symbol went
+  // unpaired, which cannot be padding, so it flushes as one more byte;
+  // non-canonical padding bits flush only via the rare grow path below.
+  // Float math, not `>> 3`/`& 7`: `bitLen` overflows int32 for strings past
+  // ~429M chars, within V8's string range.
   const bitLen = end * 5
   const size = Math.floor(bitLen / 8) + (bitLen % 8 >= 5 ? 1 : 0)
   const out = allocBytes(size)
@@ -355,9 +350,9 @@ function decodeBytes(s, end) {
   let po = 0
 
   // Fast path: 8 symbols (40 bits) -> 5 bytes, fully unrolled. Validity is
-  // checked once per block: an invalid char looks up as -1, so OR-ing the
-  // values turns negative, and a char code past the table (> 0xff) is caught
-  // by OR-ing the codes. Only then is the per-symbol scan run for its error.
+  // checked per block: an invalid char looks up as -1, turning the OR of the
+  // values negative; a char code past the table shows in the OR of the codes.
+  // The per-symbol scan then runs only to throw the right error.
   for (; ps < blockEnd; ps += 8) {
     const c0 = s.charCodeAt(ps)
     const c1 = s.charCodeAt(ps + 1)
@@ -391,9 +386,8 @@ function decodeBytes(s, end) {
     out[po++] = ((g & 0x07) << 5) | h
   }
 
-  // Tail: 0–7 symbols. Emit whole bytes as they complete, then flush a final
-  // partial byte when it carries data — either its bits are non-zero, or a
-  // whole symbol went unpaired (>= 5 leftover bits) so it cannot be padding.
+  // Tail: 0–7 symbols. Emit whole bytes as they complete; the flush rules
+  // below mirror the sizing above.
   let acc = 0
   let bits = 0
   for (; ps < end; ps++) {
@@ -408,12 +402,10 @@ function decodeBytes(s, end) {
     }
   }
   if (bits >= 5) {
-    // Accounted for in `size` above; canonical inputs land here or need no
-    // flush at all, so `out` is exactly full on return.
+    // Budgeted in `size` above; `out` is exactly full on return.
     out[po++] = acc
   } else if (acc > 0) {
-    // Non-canonical trailing padding bits (e.g. '01'): the flushed byte was
-    // not budgeted, so grow by one. Rare enough that the copy does not matter.
+    // Non-canonical trailing padding bits (e.g. '01'): not budgeted, so grow.
     const grown = allocBytes(po + 1)
     grown.set(out)
     grown[po] = acc

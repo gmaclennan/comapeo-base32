@@ -26,13 +26,11 @@ decode('IPLOE') // I/L -> 1, O -> 0
 ```
 
 `decode` always returns a `Uint8Array`, but — like Node's `Buffer` APIs — the
-result may be a view onto a shared `ArrayBuffer` that this library uses as an
-allocation pool (this sidesteps a malloc per call that would otherwise
-dominate decode time). The bytes of the view are yours; its `.buffer` is not:
-it may have a non-zero `byteOffset`, contain other decode results, and stay
-allocated while any result in it is referenced. If you need a result backed
-by its own `ArrayBuffer` — say, to transfer it to a worker — copy it with
-`.slice()`.
+result may be a view onto a shared `ArrayBuffer` used as an allocation pool.
+The bytes of the view are yours; its `.buffer` is not: it may have a non-zero
+`byteOffset`, contain other decode results, and stay allocated while any
+result in it is referenced. To get a result backed by its own `ArrayBuffer` —
+say, to transfer it to a worker — copy it with `.slice()`.
 
 ### Checksums
 
@@ -73,9 +71,8 @@ same one as RFC 4648), plus check symbols.
 Two workloads of 10,000 buffers each, 100 iterations per measurement, on
 Node 24, Linux x64: fixed 32-byte buffers (the typical "encoded ID" case) and
 mixed random lengths of 0–100 bytes. Buffers come from a seeded SHA-256 hash
-chain (via Web Crypto), so every run measures identical, well-distributed
-inputs. Lower is better; each figure is the median of three runs. Run with
-`npm run bench`.
+chain, so every run measures identical, well-distributed inputs. Lower is
+better; each figure is the median of three runs. Run with `npm run bench`.
 
 | Library                            | encode 32B | encode 0–100B | decode 32B | decode 0–100B |
 | ---------------------------------- | ---------- | ------------- | ---------- | ------------- |
@@ -91,8 +88,8 @@ inputs. Lower is better; each figure is the median of three runs. Run with
 | base-x (z-base-32)                 | 3150 ms    | 9512 ms       | 3394 ms    | 10003 ms      |
 | `Buffer` hex (not base32)          | 85 ms      | 138 ms        | 171 ms     | 193 ms        |
 
-Absolute times are roughly 3× higher than on Apple Silicon. Re-run the
-benchmark on your own target before drawing conclusions.
+Absolute times are roughly 3× higher than on Apple Silicon; re-run on your
+own target.
 
 Short inputs are the case most worth optimising, and the one these averages
 hide. Encoding a single buffer costs ~83 ns at 8 bytes and ~181 ns at 32 bytes
@@ -101,11 +98,9 @@ same sizes (13M and 6.4M ops/s).
 
 The "unreleased" rows are upstream `@scure/base` `main` (commit `3b06771`),
 which carries a large unmerged speed-up. It is installed from git under the
-alias `@scure/base-next`, so it arrives as TypeScript with no build step, and
-the benchmark strips its types at load. That needs a Node with type stripping
-(22.18+ or 24+); on anything older those four cases are skipped and the rest
-still run. Stripping costs ~55 ms once at import and does not affect the
-measurements, which start after every module has loaded.
+alias `@scure/base-next`, and the benchmark strips its TypeScript at load —
+that needs Node 22.18+ or 24+; on anything older those four cases are skipped
+and the rest still run.
 
 ## License
 
