@@ -395,3 +395,49 @@ describe('large inputs', () => {
     expect(equal(decode(encode(big)), big)).toBe(true)
   })
 })
+
+// `encode` switches strategy above a size threshold. The two paths must agree
+// exactly, so pin their outputs against each other around the crossover.
+describe('encode strategy threshold', () => {
+  /** Straightforward reference encoder, one symbol at a time. */
+  const reference = (/** @type {Uint8Array} */ u) => {
+    let out = ''
+    let acc = 0
+    let bits = 0
+    for (const byte of u) {
+      acc = (acc << 8) | byte
+      bits += 8
+      while (bits >= 5) {
+        bits -= 5
+        out += ALPHABET[(acc >>> bits) & 0x1f]
+      }
+    }
+    if (bits > 0) out += ALPHABET[(acc << (5 - bits)) & 0x1f]
+    return out
+  }
+
+  it('agrees with a reference encoder across the crossover', () => {
+    for (let n = 500; n <= 530; n++) {
+      const b = randomBytes(n)
+      expect(encode(b), `length ${n}`).toBe(reference(b))
+      expect(equal(decode(encode(b)), b), `length ${n}`).toBe(true)
+    }
+  })
+
+  it('applies a checksum identically on both paths', () => {
+    for (const n of [8, 32, 512, 513, 2000]) {
+      const b = randomBytes(n)
+      const encoded = encode(b, { checksum: true })
+      expect(verify(encoded), `length ${n}`).toBe(true)
+      expect(equal(decode(encoded, { checksum: true }), b)).toBe(true)
+    }
+  })
+
+  it('encodes multi-byte strings identically on both paths', () => {
+    for (const n of [1, 200]) {
+      const s = '👀 la niña'.repeat(n)
+      expect(str(decode(encode(s)))).toBe(s)
+      expect(encode(s)).toBe(reference(utf8(s)))
+    }
+  })
+})

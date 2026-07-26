@@ -17,6 +17,9 @@ export const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
 /** The five extra symbols used only for the optional check value (32–36). */
 const CHECK_EXTRA = '*~$=U'
 
+/** {@link ALPHABET} plus {@link CHECK_EXTRA}, indexed by check value (0–36). */
+const CHECK_ALPHABET = ALPHABET + CHECK_EXTRA
+
 /** Char codes of {@link ALPHABET}, indexed by 5-bit value. */
 const ENCODE = new Uint8Array(32)
 for (let i = 0; i < 32; i++) ENCODE[i] = ALPHABET.charCodeAt(i)
@@ -32,7 +35,7 @@ const DECODE = buildDecodeTable(ALPHABET, false)
  * Like {@link DECODE} but also accepts the five check-only symbols (values
  * 32–36). Used to read the trailing check character.
  */
-const DECODE_CHECK = buildDecodeTable(ALPHABET + CHECK_EXTRA, true)
+const DECODE_CHECK = buildDecodeTable(CHECK_ALPHABET, true)
 
 /**
  * @param {string} symbols
@@ -85,6 +88,17 @@ const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
 /**
+ * Input size (in bytes) up to which {@link encodeToString} beats
+ * {@link encodeViaBuffer}.
+ *
+ * `TextDecoder` has a fixed per-call cost that dominates for short inputs but
+ * amortises into a much faster bulk copy for long ones. Measured crossover is
+ * 512–640 bytes on V8; below it building the string directly is up to ~9x
+ * faster, above it ~2x slower.
+ */
+const STRING_BUILD_MAX = 512
+
+/**
  * Encode bytes (or a UTF-8 string) to a Crockford Base 32 string.
  *
  * @param {Uint8Array | string} data
@@ -97,6 +111,79 @@ export function encode(data, options) {
   if (!(bytes instanceof Uint8Array)) {
     throw new TypeError('Input must be a Uint8Array or string')
   }
+
+  let result =
+    bytes.length <= STRING_BUILD_MAX
+      ? encodeToString(bytes)
+      : encodeViaBuffer(bytes)
+  if (options && options.checksum) {
+    result += CHECK_ALPHABET[checksum(bytes)]
+  }
+  return result
+}
+
+/**
+ * Build the output string directly, eight symbols at a time. Allocates no
+ * intermediate buffer, which is what makes it quick for short inputs.
+ *
+ * @param {Uint8Array} bytes
+ * @returns {string}
+ */
+function encodeToString(bytes) {
+  const len = bytes.length
+  const fromCharCode = String.fromCharCode
+  let result = ''
+
+  let pi = 0
+  const blockEnd = len - (len % 5)
+
+  // Fast path: 5 bytes (40 bits) -> 8 symbols, fully unrolled.
+  for (; pi < blockEnd; pi += 5) {
+    const b0 = bytes[pi]
+    const b1 = bytes[pi + 1]
+    const b2 = bytes[pi + 2]
+    const b3 = bytes[pi + 3]
+    const b4 = bytes[pi + 4]
+
+    result += fromCharCode(
+      ENCODE[b0 >>> 3],
+      ENCODE[((b0 & 0x07) << 2) | (b1 >>> 6)],
+      ENCODE[(b1 >>> 1) & 0x1f],
+      ENCODE[((b1 & 0x01) << 4) | (b2 >>> 4)],
+      ENCODE[((b2 & 0x0f) << 1) | (b3 >>> 7)],
+      ENCODE[(b3 >>> 2) & 0x1f],
+      ENCODE[((b3 & 0x03) << 3) | (b4 >>> 5)],
+      ENCODE[b4 & 0x1f],
+    )
+  }
+
+  // Tail: 1–4 bytes, as in `encodeViaBuffer`.
+  if (pi < len) {
+    let acc = 0
+    let bits = 0
+    for (; pi < len; pi++) {
+      acc = (acc << 8) | bytes[pi]
+      bits += 8
+      while (bits >= 5) {
+        bits -= 5
+        result += fromCharCode(ENCODE[(acc >>> bits) & 0x1f])
+      }
+    }
+    result += fromCharCode(ENCODE[(acc << (5 - bits)) & 0x1f])
+  }
+
+  return result
+}
+
+/**
+ * Fill a byte buffer with symbol char codes and convert it in one go. Wins
+ * over {@link encodeToString} once the input is long enough to amortise the
+ * `TextDecoder` call.
+ *
+ * @param {Uint8Array} bytes
+ * @returns {string}
+ */
+function encodeViaBuffer(bytes) {
   const len = bytes.length
   const out = new Uint8Array(Math.ceil((len * 8) / 5))
 
@@ -140,11 +227,7 @@ export function encode(data, options) {
     out[po++] = ENCODE[(acc << (5 - bits)) & 0x1f]
   }
 
-  let result = decoder.decode(out)
-  if (options && options.checksum) {
-    result += (ALPHABET + CHECK_EXTRA)[checksum(bytes)]
-  }
-  return result
+  return decoder.decode(out)
 }
 
 /**
@@ -182,8 +265,8 @@ export function decode(input, options) {
     const computed = checksum(bytes)
     if (computed !== provided) {
       throw new InvalidChecksumError(
-        `Checksum mismatch: expected '${(ALPHABET + CHECK_EXTRA)[computed]}' ` +
-          `but found '${(ALPHABET + CHECK_EXTRA)[provided]}'`,
+        `Checksum mismatch: expected '${CHECK_ALPHABET[computed]}' ` +
+          `but found '${CHECK_ALPHABET[provided]}'`,
       )
     }
     return bytes

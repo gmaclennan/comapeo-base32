@@ -69,21 +69,23 @@ x64. Lower is better; each figure is the median of three runs. Run with
 
 | Library                   | encode  | decode  |
 | ------------------------- | ------- | ------- |
-| z32                       | 685 ms  | 583 ms  |
-| rfc4648                   | 777 ms  | 1744 ms |
-| base32                    | 1138 ms | 2625 ms |
-| **@comapeo/base32**       | 1439 ms | 838 ms  |
-| crockford-base32          | 1953 ms | 4310 ms |
-| @scure/base (crockford)   | 3500 ms | 3580 ms |
-| @scure/base (rfc4648)     | 3867 ms | 3502 ms |
-| base-x (z-base-32)        | 8801 ms | 9493 ms |
-| `Buffer` hex (not base32) | 156 ms  | 221 ms  |
+| **@comapeo/base32**       | 292 ms  | 822 ms  |
+| z32                       | 699 ms  | 585 ms  |
+| rfc4648                   | 798 ms  | 1589 ms |
+| base32                    | 1122 ms | 2649 ms |
+| crockford-base32          | 1914 ms | 4455 ms |
+| @scure/base (crockford)   | 3723 ms | 3435 ms |
+| @scure/base (rfc4648)     | 4049 ms | 3430 ms |
+| base-x (z-base-32)        | 8754 ms | 9517 ms |
+| `Buffer` hex (not base32) | 158 ms  | 208 ms  |
 
-These numbers replace an earlier set measured on Node 24 / Apple Silicon, where
-absolute times were roughly 3× lower and `@comapeo/base32` led on both encode
-and decode. On x64 the standings differ — notably z32 is ahead on both
-operations — so re-run the benchmark on your own target before drawing
+Absolute times are roughly 3× higher than on Apple Silicon; z32 remains ahead
+on decode here. Re-run the benchmark on your own target before drawing
 conclusions.
+
+Short inputs are the case most worth optimising, and the one these averages
+hide. Encoding a single buffer costs ~83 ns at 8 bytes and ~181 ns at 32 bytes
+(12M and 5.5M ops/s respectively).
 
 `@scure/base` is measured at the released 2.2.0. Its unreleased `main` is
 substantially quicker (~2620 ms encode / ~1880 ms decode for crockford in the
