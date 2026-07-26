@@ -68,25 +68,44 @@ same one as RFC 4648), plus check symbols.
 
 ## Benchmarks
 
-Two workloads of 10,000 buffers each, 100 iterations per measurement, on
-Node 24, Linux x64: fixed 32-byte buffers (the typical "encoded ID" case) and
-mixed random lengths of 0–100 bytes. Buffers come from a seeded SHA-256 hash
-chain, so every run measures identical, well-distributed inputs. Lower is
-better; each figure is the median of three runs. Run with `npm run bench`.
+Benchmarks run with [Vitest bench](https://vitest.dev/guide/features#benchmarking)
+in Node (`npm run bench`) and in real browsers via Playwright
+(`npm run bench:browser`). Two workloads of 10,000 buffers: fixed 32-byte
+buffers (the typical "encoded ID" case) and mixed random lengths of 0–100
+bytes, generated from a seeded SHA-256 hash chain so every run measures
+identical, well-distributed inputs. Each figure is the mean time for one pass
+over a workload (lower is better), measured on Node 24 / Chromium 141, Linux
+x64.
+
+**Node:**
 
 | Library                            | encode 32B | encode 0–100B | decode 32B | decode 0–100B |
 | ---------------------------------- | ---------- | ------------- | ---------- | ------------- |
-| **@comapeo/base32**                | 184 ms     | 295 ms        | 205 ms     | 284 ms        |
-| z32                                | 496 ms     | 693 ms        | 410 ms     | 502 ms        |
-| rfc4648                            | 553 ms     | 785 ms        | 1268 ms    | 1873 ms       |
-| base32                             | 795 ms     | 1147 ms       | 1585 ms    | 2668 ms       |
-| crockford-base32                   | 1258 ms    | 1856 ms       | 2839 ms    | 4341 ms       |
-| @scure/base unreleased (crockford) | 1073 ms    | 2589 ms       | 665 ms     | 1854 ms       |
-| @scure/base unreleased (rfc4648)   | 1150 ms    | 2603 ms       | 627 ms     | 1800 ms       |
-| @scure/base 2.2.0 (crockford)      | 2504 ms    | 3593 ms       | 2360 ms    | 3566 ms       |
-| @scure/base 2.2.0 (rfc4648)        | 2695 ms    | 3961 ms       | 2350 ms    | 3693 ms       |
-| base-x (z-base-32)                 | 3150 ms    | 9512 ms       | 3394 ms    | 10003 ms      |
-| `Buffer` hex (not base32)          | 85 ms      | 138 ms        | 171 ms     | 193 ms        |
+| **@comapeo/base32**                | 2.1 ms     | 2.9 ms        | 2.7 ms     | 3.6 ms        |
+| z32                                | 6.9 ms     | 9.1 ms        | 6.2 ms     | 8.0 ms        |
+| rfc4648                            | 7.9 ms     | 9.2 ms        | 9.5 ms     | 14.4 ms       |
+| base32                             | 9.6 ms     | 12.1 ms       | 18.3 ms    | 25.1 ms       |
+| crockford-base32                   | 15.6 ms    | 20.5 ms       | 29.2 ms    | 43.6 ms       |
+| @scure/base unreleased (crockford) | 11.3 ms    | 21.8 ms       | 7.5 ms     | 17.3 ms       |
+| @scure/base unreleased (rfc4648)   | 13.6 ms    | 29.2 ms       | 6.6 ms     | 19.2 ms       |
+| @scure/base 2.2.0 (crockford)      | 28.3 ms    | 42.2 ms       | 25.1 ms    | 36.2 ms       |
+| @scure/base 2.2.0 (rfc4648)        | 29.6 ms    | 44.1 ms       | 21.6 ms    | 34.9 ms       |
+| base-x (z-base-32)                 | 31.0 ms    | 98.9 ms       | 34.6 ms    | 107.8 ms      |
+| `Buffer` hex (not base32)          | 1.2 ms     | 1.7 ms        | 1.6 ms     | 2.1 ms        |
+
+**Chromium** (libraries that require Node's `Buffer` — crockford-base32,
+base32, and `Buffer` hex — only run in Node):
+
+| Library                            | encode 32B | encode 0–100B | decode 32B | decode 0–100B |
+| ---------------------------------- | ---------- | ------------- | ---------- | ------------- |
+| **@comapeo/base32**                | 1.7 ms     | 2.8 ms        | 2.4 ms     | 3.6 ms        |
+| z32                                | 5.3 ms     | 6.8 ms        | 7.9 ms     | 10.6 ms       |
+| rfc4648                            | 5.9 ms     | 7.3 ms        | 10.9 ms    | 19.0 ms       |
+| @scure/base unreleased (crockford) | 5.1 ms     | 15.2 ms       | 7.9 ms     | 15.3 ms       |
+| @scure/base unreleased (rfc4648)   | 6.0 ms     | 19.5 ms       | 6.2 ms     | 13.7 ms       |
+| @scure/base 2.2.0 (crockford)      | 25.9 ms    | 42.3 ms       | 19.9 ms    | 34.1 ms       |
+| @scure/base 2.2.0 (rfc4648)        | 28.2 ms    | 44.5 ms       | 22.6 ms    | 36.1 ms       |
+| base-x (z-base-32)                 | 38.2 ms    | 106.0 ms      | 38.7 ms    | 118.9 ms      |
 
 Absolute times are roughly 3× higher than on Apple Silicon; re-run on your
 own target.
@@ -98,9 +117,7 @@ same sizes (13M and 6.4M ops/s).
 
 The "unreleased" rows are upstream `@scure/base` `main` (commit `3b06771`),
 which carries a large unmerged speed-up. It is installed from git under the
-alias `@scure/base-next`, and the benchmark strips its TypeScript at load —
-that needs Node 22.18+ or 24+; on anything older those four cases are skipped
-and the rest still run.
+alias `@scure/base-next`, and Vitest transforms its TypeScript at load.
 
 ## License
 

@@ -19,7 +19,8 @@
     "test:lint": "eslint",
     "test:vitest": "vitest run",
     "coverage": "vitest run --coverage --project node",
-    "bench": "node benchmark.js",
+    "bench": "vitest bench --run --project node",
+    "bench:browser": "vitest bench --run --project browser",
     "format": "prettier --write .",
     "prepack": "rimraf dist && tsc -p tsconfig.build.json"
   },
@@ -45,7 +46,6 @@
     "crockford-base32": "^2.1.0",
     "eslint": "^10.4.1",
     "globals": "^17.6.0",
-    "nanobench": "^3.0.0",
     "npm-run-all": "^4.1.5",
     "playwright": "^1.56.1",
     "prettier": "^3.6.2",
