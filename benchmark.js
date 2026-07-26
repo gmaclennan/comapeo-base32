@@ -5,6 +5,10 @@ import { CrockfordBase32 } from 'crockford-base32'
 import * as z32 from 'z32'
 import legacyBase32 from 'base32'
 import { base32 as rfc4648 } from 'rfc4648'
+import {
+  base32 as scureBase32,
+  base32crockford as scureCrockford,
+} from '@scure/base'
 import baseX from 'base-x'
 
 const zbase32 = baseX('ybndrfg8ejkmcpqxot1uwisza345h769')
@@ -43,6 +47,20 @@ bench('rfc4648 base32 encode 100 times', (b) => {
   b.start()
   for (let i = 0; i < 100; i++)
     for (const buf of buffers) rfc4648.stringify(buf)
+  b.end()
+})
+
+bench('@scure/base crockford encode 100 times', (b) => {
+  b.start()
+  for (let i = 0; i < 100; i++)
+    for (const buf of buffers) scureCrockford.encode(buf)
+  b.end()
+})
+
+bench('@scure/base rfc4648 base32 encode 100 times', (b) => {
+  b.start()
+  for (let i = 0; i < 100; i++)
+    for (const buf of buffers) scureBase32.encode(buf)
   b.end()
 })
 
@@ -92,6 +110,21 @@ bench('rfc4648 base32 decode 100 times', (b) => {
   b.start()
   for (let i = 0; i < 100; i++)
     for (const s of encoded) rfc4648.parse(s, { out: Buffer.allocUnsafe })
+  b.end()
+})
+
+bench('@scure/base crockford decode 100 times', (b) => {
+  const encoded = buffers.map((buf) => scureCrockford.encode(buf))
+  b.start()
+  for (let i = 0; i < 100; i++)
+    for (const s of encoded) scureCrockford.decode(s)
+  b.end()
+})
+
+bench('@scure/base rfc4648 base32 decode 100 times', (b) => {
+  const encoded = buffers.map((buf) => scureBase32.encode(buf))
+  b.start()
+  for (let i = 0; i < 100; i++) for (const s of encoded) scureBase32.decode(s)
   b.end()
 })
 
