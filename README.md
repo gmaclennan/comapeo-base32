@@ -25,7 +25,10 @@ decode('edqpts-90edt7-4tbecw') // hyphens ignored, case ignored
 decode('IPLOE') // I/L -> 1, O -> 0
 ```
 
-`decode` returns a `Uint8Array`.
+`decode` returns a `Uint8Array`. In Node, outputs larger than 64 bytes are
+allocated from the `Buffer` pool (so they are `Buffer` instances, a
+`Uint8Array` subclass, sharing a pooled `ArrayBuffer`) — this sidesteps a
+malloc per call that would otherwise dominate decode time.
 
 ### Checksums
 
@@ -69,25 +72,25 @@ x64. Lower is better; each figure is the median of three runs. Run with
 
 | Library                            | encode  | decode  |
 | ---------------------------------- | ------- | ------- |
-| **@comapeo/base32**                | 280 ms  | 861 ms  |
-| z32                                | 710 ms  | 580 ms  |
-| rfc4648                            | 824 ms  | 1667 ms |
-| base32                             | 1166 ms | 2401 ms |
-| crockford-base32                   | 1877 ms | 4311 ms |
-| @scure/base unreleased (crockford) | 2570 ms | 1790 ms |
-| @scure/base unreleased (rfc4648)   | 2635 ms | 1965 ms |
-| @scure/base 2.2.0 (crockford)      | 3708 ms | 3884 ms |
-| @scure/base 2.2.0 (rfc4648)        | 3838 ms | 3695 ms |
-| base-x (z-base-32)                 | 9240 ms | 9780 ms |
-| `Buffer` hex (not base32)          | 161 ms  | 218 ms  |
+| **@comapeo/base32**                | 265 ms  | 301 ms  |
+| z32                                | 615 ms  | 458 ms  |
+| rfc4648                            | 779 ms  | 1624 ms |
+| base32                             | 1117 ms | 2226 ms |
+| crockford-base32                   | 1818 ms | 3803 ms |
+| @scure/base unreleased (crockford) | 3202 ms | 1875 ms |
+| @scure/base unreleased (rfc4648)   | 3323 ms | 2215 ms |
+| @scure/base 2.2.0 (crockford)      | 3308 ms | 3362 ms |
+| @scure/base 2.2.0 (rfc4648)        | 3474 ms | 3404 ms |
+| base-x (z-base-32)                 | 8786 ms | 8947 ms |
+| `Buffer` hex (not base32)          | 162 ms  | 199 ms  |
 
-Absolute times are roughly 3× higher than on Apple Silicon; z32 remains ahead
-on decode here. Re-run the benchmark on your own target before drawing
-conclusions.
+Absolute times are roughly 3× higher than on Apple Silicon. Re-run the
+benchmark on your own target before drawing conclusions.
 
 Short inputs are the case most worth optimising, and the one these averages
 hide. Encoding a single buffer costs ~83 ns at 8 bytes and ~181 ns at 32 bytes
-(12M and 5.5M ops/s respectively).
+(12M and 5.5M ops/s respectively); decoding costs ~76 ns and ~157 ns at the
+same sizes (13M and 6.4M ops/s).
 
 The "unreleased" rows are upstream `@scure/base` `main` (commit `3b06771`),
 which carries a large unmerged speed-up. It is installed from git under the

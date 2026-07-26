@@ -188,6 +188,35 @@ describe('decode', () => {
     expect(() => decode('👀')).toThrow(InvalidCharacterError)
   })
 
+  // The decoder validates 8-symbol blocks in one batch, so exercise invalid
+  // characters at every position inside a full block, not just in the tail.
+  it.each([0, 1, 2, 3, 4, 5, 6, 7])(
+    'throws on an invalid character at block position %i',
+    (i) => {
+      const chars = 'ABCDEFGH'.split('')
+      chars[i] = '&'
+      expect(() => decode(chars.join(''))).toThrow(InvalidCharacterError)
+      expect(() => decode(chars.join(''))).toThrow(
+        'Invalid base 32 character found in string: &',
+      )
+    },
+  )
+
+  it('rejects U inside a full block', () => {
+    expect(() => decode('AAAUAAAA')).toThrow(InvalidCharacterError)
+  })
+
+  it('rejects a non-latin1 character inside a full block', () => {
+    expect(() => decode('AAAAAAAŁ')).toThrow(InvalidCharacterError)
+    expect(() => decode('AAAA👀AAA')).toThrow(InvalidCharacterError)
+  })
+
+  it('preserves non-zero trailing bits in long non-canonical input', () => {
+    // Long enough that the output leaves V8's on-heap typed array range, and
+    // ending in unbudgeted padding bits so the one-byte grow path runs.
+    expect(hex(decode('0'.repeat(104) + '01'))).toBe('00'.repeat(66) + '40')
+  })
+
   it.each([123, null, undefined, {}])(
     'throws TypeError for non-string input (%s)',
     (input) => {

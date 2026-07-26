@@ -88,6 +88,33 @@ const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
 /**
+ * Byte size above which V8 stores a `new Uint8Array`'s data off-heap, turning
+ * every construction into a malloc (and `subarray`/`.buffer` on a smaller
+ * array into one too, by materialising the lazy ArrayBuffer). That malloc
+ * dominates a decode profile, so above this size the output is allocated from
+ * Node's pre-allocated `Buffer` pool instead when it is available. A `Buffer`
+ * is a `Uint8Array` subclass, so callers see the documented type either way.
+ */
+const ON_HEAP_MAX = 64
+
+const hasBufferPool =
+  typeof Buffer === 'function' && typeof Buffer.allocUnsafe === 'function'
+
+/**
+ * Allocate the decode output: on-heap `Uint8Array` when small enough, pooled
+ * `Buffer` when that would malloc and a pool exists (Node). Every byte of the
+ * result is subsequently written, so the unzeroed pool memory never leaks.
+ *
+ * @param {number} n
+ * @returns {Uint8Array}
+ */
+function allocBytes(n) {
+  return n > ON_HEAP_MAX && hasBufferPool
+    ? Buffer.allocUnsafe(n)
+    : new Uint8Array(n)
+}
+
+/**
  * Input size (in bytes) up to which {@link encodeToString} beats
  * {@link encodeViaBuffer}.
  *
@@ -297,22 +324,49 @@ export function verify(input) {
  * @returns {Uint8Array}
  */
 function decodeBytes(s, end) {
-  const out = new Uint8Array(Math.ceil((end * 5) / 8))
+  // Exact output size, so no trailing `subarray` is ever needed (a `subarray`
+  // materialises an on-heap array's lazy ArrayBuffer, i.e. costs a malloc).
+  // `end * 5` bits yield `bitLen >> 3` whole bytes; when >= 5 bits are left
+  // over a whole symbol went unpaired, which cannot be padding, so it flushes
+  // as one more byte. Non-canonical padding bits also flush, but only via the
+  // rare grow path at the bottom.
+  const bitLen = end * 5
+  const size = (bitLen >> 3) + ((bitLen & 7) >= 5 ? 1 : 0)
+  const out = allocBytes(size)
   const blockEnd = end - (end % 8)
 
   let ps = 0
   let po = 0
 
-  // Fast path: 8 symbols (40 bits) -> 5 bytes, fully unrolled.
+  // Fast path: 8 symbols (40 bits) -> 5 bytes, fully unrolled. Validity is
+  // checked once per block: an invalid char looks up as -1, so OR-ing the
+  // values turns negative, and a char code past the table (> 0xff) is caught
+  // by OR-ing the codes. Only then is the per-symbol scan run for its error.
   for (; ps < blockEnd; ps += 8) {
-    const a = quintet(s, ps)
-    const b = quintet(s, ps + 1)
-    const c = quintet(s, ps + 2)
-    const d = quintet(s, ps + 3)
-    const e = quintet(s, ps + 4)
-    const f = quintet(s, ps + 5)
-    const g = quintet(s, ps + 6)
-    const h = quintet(s, ps + 7)
+    const c0 = s.charCodeAt(ps)
+    const c1 = s.charCodeAt(ps + 1)
+    const c2 = s.charCodeAt(ps + 2)
+    const c3 = s.charCodeAt(ps + 3)
+    const c4 = s.charCodeAt(ps + 4)
+    const c5 = s.charCodeAt(ps + 5)
+    const c6 = s.charCodeAt(ps + 6)
+    const c7 = s.charCodeAt(ps + 7)
+
+    const a = DECODE[c0]
+    const b = DECODE[c1]
+    const c = DECODE[c2]
+    const d = DECODE[c3]
+    const e = DECODE[c4]
+    const f = DECODE[c5]
+    const g = DECODE[c6]
+    const h = DECODE[c7]
+
+    if (
+      (a | b | c | d | e | f | g | h) < 0 ||
+      (c0 | c1 | c2 | c3 | c4 | c5 | c6 | c7) > 0xff
+    ) {
+      for (let i = ps; i < ps + 8; i++) quintet(s, i)
+    }
 
     out[po++] = (a << 3) | (b >>> 2)
     out[po++] = ((b & 0x03) << 6) | (c << 1) | (d >>> 4)
@@ -337,11 +391,19 @@ function decodeBytes(s, end) {
       acc |= v << (8 - bits)
     }
   }
-  if (acc > 0 || bits >= 5) out[po++] = acc
-
-  // The estimate over-allocates by at most one byte, so the returned view may
-  // be a slice of a slightly larger backing buffer (its trailing byte is zero).
-  return po === out.length ? out : out.subarray(0, po)
+  if (bits >= 5) {
+    // Accounted for in `size` above; canonical inputs land here or need no
+    // flush at all, so `out` is exactly full on return.
+    out[po++] = acc
+  } else if (acc > 0) {
+    // Non-canonical trailing padding bits (e.g. '01'): the flushed byte was
+    // not budgeted, so grow by one. Rare enough that the copy does not matter.
+    const grown = allocBytes(po + 1)
+    grown.set(out)
+    grown[po] = acc
+    return grown
+  }
+  return out
 }
 
 /**
