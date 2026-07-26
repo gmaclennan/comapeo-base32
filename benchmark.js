@@ -40,22 +40,52 @@ try {
   console.error(`# skipping unreleased @scure/base: ${err.message}`)
 }
 
-// Seeded PRNG (xorshift32) so every run measures identical inputs and results
-// are comparable across runs and machines.
-let seed = 0x2c0ffee1
-function rnd() {
-  seed ^= seed << 13
-  seed ^= seed >>> 17
-  seed ^= seed << 5
-  seed >>>= 0
-  return seed / 0x100000000
+// Deterministic input generation: a SHA-256 hash chain over a fixed seed (the
+// construction of mafintosh's `random-bytes-seed`, here on Web Crypto so it
+// needs no dependency and reproduces the same bytes on any platform). Every
+// run measures identical inputs, and unlike a hand-rolled PRNG the bytes are
+// indistinguishable from real random data, so the workloads carry no
+// statistical quirks of a weak generator.
+let chainState = new TextEncoder().encode('@comapeo/base32 benchmark v1')
+
+/** Advance the chain (`state = SHA-256(state)`) and return the new block. */
+async function nextChainBlock() {
+  chainState = new Uint8Array(
+    await globalThis.crypto.subtle.digest('SHA-256', chainState),
+  )
+  return chainState
 }
 
 /** @param {number} n */
-function randomBytes(n) {
+async function randomBytes(n) {
   const buf = Buffer.allocUnsafe(n)
-  for (let i = 0; i < n; i++) buf[i] = (rnd() * 256) | 0
+  let used = 0
+  while (used < n) {
+    const block = await nextChainBlock()
+    buf.set(block.subarray(0, Math.min(32, n - used)), used)
+    used += 32
+  }
   return buf
+}
+
+/** @param {number} count */
+async function makeFixedBuffers(count) {
+  const buffers = []
+  for (let i = 0; i < count; i++) buffers.push(await randomBytes(32))
+  return buffers
+}
+
+/** @param {number} count */
+async function makeMixedBuffers(count) {
+  // Sizes in [0, 100], each drawn from two chain bytes (16-bit mod 101; the
+  // modulo bias at 16 bits is ~0.1%, irrelevant for a benchmark workload).
+  const sizeBytes = await randomBytes(2 * count)
+  const buffers = []
+  for (let i = 0; i < count; i++) {
+    const size = ((sizeBytes[2 * i] << 8) | sizeBytes[2 * i + 1]) % 101
+    buffers.push(await randomBytes(size))
+  }
+  return buffers
 }
 
 /**
@@ -65,11 +95,8 @@ function randomBytes(n) {
  * @type {[string, Buffer[]][]}
  */
 const workloads = [
-  ['32B', Array.from({ length: 1e4 }, () => randomBytes(32))],
-  [
-    '0-100B',
-    Array.from({ length: 1e4 }, () => randomBytes(Math.round(rnd() * 100))),
-  ],
+  ['32B', await makeFixedBuffers(1e4)],
+  ['0-100B', await makeMixedBuffers(1e4)],
 ]
 
 for (const [w, buffers] of workloads) {

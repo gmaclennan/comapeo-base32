@@ -72,23 +72,24 @@ same one as RFC 4648), plus check symbols.
 
 Two workloads of 10,000 buffers each, 100 iterations per measurement, on
 Node 24, Linux x64: fixed 32-byte buffers (the typical "encoded ID" case) and
-mixed random lengths of 0–100 bytes. Buffers come from a seeded PRNG, so every
-run measures identical inputs. Lower is better; each figure is the median of
-three runs. Run with `npm run bench`.
+mixed random lengths of 0–100 bytes. Buffers come from a seeded SHA-256 hash
+chain (via Web Crypto), so every run measures identical, well-distributed
+inputs. Lower is better; each figure is the median of three runs. Run with
+`npm run bench`.
 
 | Library                            | encode 32B | encode 0–100B | decode 32B | decode 0–100B |
 | ---------------------------------- | ---------- | ------------- | ---------- | ------------- |
-| **@comapeo/base32**                | 163 ms     | 246 ms        | 189 ms     | 265 ms        |
-| z32                                | 433 ms     | 612 ms        | 294 ms     | 392 ms        |
-| rfc4648                            | 512 ms     | 721 ms        | 969 ms     | 1513 ms       |
-| base32                             | 739 ms     | 1090 ms       | 1338 ms    | 2191 ms       |
-| crockford-base32                   | 1199 ms    | 1781 ms       | 2419 ms    | 3676 ms       |
-| @scure/base unreleased (crockford) | 1245 ms    | 3014 ms       | 518 ms     | 1943 ms       |
-| @scure/base unreleased (rfc4648)   | 1322 ms    | 3030 ms       | 481 ms     | 1800 ms       |
-| @scure/base 2.2.0 (crockford)      | 2166 ms    | 3194 ms       | 2045 ms    | 2992 ms       |
-| @scure/base 2.2.0 (rfc4648)        | 2370 ms    | 3496 ms       | 2003 ms    | 3177 ms       |
-| base-x (z-base-32)                 | 2872 ms    | 8136 ms       | 3111 ms    | 8868 ms       |
-| `Buffer` hex (not base32)          | 78 ms      | 137 ms        | 159 ms     | 154 ms        |
+| **@comapeo/base32**                | 184 ms     | 295 ms        | 205 ms     | 284 ms        |
+| z32                                | 496 ms     | 693 ms        | 410 ms     | 502 ms        |
+| rfc4648                            | 553 ms     | 785 ms        | 1268 ms    | 1873 ms       |
+| base32                             | 795 ms     | 1147 ms       | 1585 ms    | 2668 ms       |
+| crockford-base32                   | 1258 ms    | 1856 ms       | 2839 ms    | 4341 ms       |
+| @scure/base unreleased (crockford) | 1073 ms    | 2589 ms       | 665 ms     | 1854 ms       |
+| @scure/base unreleased (rfc4648)   | 1150 ms    | 2603 ms       | 627 ms     | 1800 ms       |
+| @scure/base 2.2.0 (crockford)      | 2504 ms    | 3593 ms       | 2360 ms    | 3566 ms       |
+| @scure/base 2.2.0 (rfc4648)        | 2695 ms    | 3961 ms       | 2350 ms    | 3693 ms       |
+| base-x (z-base-32)                 | 3150 ms    | 9512 ms       | 3394 ms    | 10003 ms      |
+| `Buffer` hex (not base32)          | 85 ms      | 138 ms        | 171 ms     | 193 ms        |
 
 Absolute times are roughly 3× higher than on Apple Silicon. Re-run the
 benchmark on your own target before drawing conclusions.
