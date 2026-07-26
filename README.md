@@ -25,10 +25,12 @@ decode('edqpts-90edt7-4tbecw') // hyphens ignored, case ignored
 decode('IPLOE') // I/L -> 1, O -> 0
 ```
 
-`decode` returns a `Uint8Array`. In Node, outputs larger than 64 bytes are
-allocated from the `Buffer` pool (so they are `Buffer` instances, a
-`Uint8Array` subclass, sharing a pooled `ArrayBuffer`) — this sidesteps a
-malloc per call that would otherwise dominate decode time.
+`decode` returns a `Uint8Array`. Outputs of 65–4096 bytes are carved from an
+internal 8 KiB allocation pool (the same strategy as Node's `Buffer` pool), so
+their `byteOffset` may be non-zero, they share an `ArrayBuffer` with other
+decode results, and a pool chunk stays allocated while any result carved from
+it is referenced. This sidesteps a malloc per call that would otherwise
+dominate decode time.
 
 ### Checksums
 
@@ -74,17 +76,17 @@ three runs. Run with `npm run bench`.
 
 | Library                            | encode 32B | encode 0–100B | decode 32B | decode 0–100B |
 | ---------------------------------- | ---------- | ------------- | ---------- | ------------- |
-| **@comapeo/base32**                | 161 ms     | 241 ms        | 177 ms     | 284 ms        |
-| z32                                | 458 ms     | 597 ms        | 313 ms     | 428 ms        |
-| rfc4648                            | 520 ms     | 748 ms        | 1023 ms    | 1616 ms       |
-| base32                             | 707 ms     | 1047 ms       | 1413 ms    | 2246 ms       |
-| crockford-base32                   | 1178 ms    | 1755 ms       | 2460 ms    | 3740 ms       |
-| @scure/base unreleased (crockford) | 1063 ms    | 2937 ms       | 507 ms     | 1911 ms       |
-| @scure/base unreleased (rfc4648)   | 1263 ms    | 3032 ms       | 481 ms     | 1774 ms       |
-| @scure/base 2.2.0 (crockford)      | 2180 ms    | 3180 ms       | 2283 ms    | 3363 ms       |
-| @scure/base 2.2.0 (rfc4648)        | 2311 ms    | 3368 ms       | 2101 ms    | 3240 ms       |
-| base-x (z-base-32)                 | 2892 ms    | 8422 ms       | 3035 ms    | 8669 ms       |
-| `Buffer` hex (not base32)          | 73 ms      | 131 ms        | 138 ms     | 145 ms        |
+| **@comapeo/base32**                | 163 ms     | 246 ms        | 189 ms     | 265 ms        |
+| z32                                | 433 ms     | 612 ms        | 294 ms     | 392 ms        |
+| rfc4648                            | 512 ms     | 721 ms        | 969 ms     | 1513 ms       |
+| base32                             | 739 ms     | 1090 ms       | 1338 ms    | 2191 ms       |
+| crockford-base32                   | 1199 ms    | 1781 ms       | 2419 ms    | 3676 ms       |
+| @scure/base unreleased (crockford) | 1245 ms    | 3014 ms       | 518 ms     | 1943 ms       |
+| @scure/base unreleased (rfc4648)   | 1322 ms    | 3030 ms       | 481 ms     | 1800 ms       |
+| @scure/base 2.2.0 (crockford)      | 2166 ms    | 3194 ms       | 2045 ms    | 2992 ms       |
+| @scure/base 2.2.0 (rfc4648)        | 2370 ms    | 3496 ms       | 2003 ms    | 3177 ms       |
+| base-x (z-base-32)                 | 2872 ms    | 8136 ms       | 3111 ms    | 8868 ms       |
+| `Buffer` hex (not base32)          | 78 ms      | 137 ms        | 159 ms     | 154 ms        |
 
 Absolute times are roughly 3× higher than on Apple Silicon. Re-run the
 benchmark on your own target before drawing conclusions.

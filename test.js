@@ -418,6 +418,32 @@ describe('verify', () => {
   })
 })
 
+// Decode outputs of 65-4096 bytes are carved from a shared allocation pool.
+describe('decode allocation pool', () => {
+  it('results held concurrently never alias each other', () => {
+    // Enough pooled-size results to roll the pool over many times.
+    const inputs = Array.from({ length: 500 }, () =>
+      randomBytes(65 + Math.round(Math.random() * 200)),
+    )
+    const results = inputs.map((b) => decode(encode(b)))
+    results.forEach((r, i) => {
+      expect(equal(r, inputs[i]), `input ${i}`).toBe(true)
+    })
+  })
+
+  it('returns plain Uint8Array instances at every size class', () => {
+    for (const n of [10, 100, 5000]) {
+      expect(decode(encode(randomBytes(n))).constructor).toBe(Uint8Array)
+    }
+  })
+
+  it('keeps pooled results 8-byte aligned', () => {
+    for (let i = 0; i < 20; i++) {
+      expect(decode(encode(randomBytes(100))).byteOffset % 8).toBe(0)
+    }
+  })
+})
+
 describe('large inputs', () => {
   it('round-trips a 20k-byte buffer', () => {
     const big = randomBytes(20_000)

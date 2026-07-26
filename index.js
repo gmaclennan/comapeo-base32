@@ -91,27 +91,42 @@ const decoder = new TextDecoder()
  * Byte size above which V8 stores a `new Uint8Array`'s data off-heap, turning
  * every construction into a malloc (and `subarray`/`.buffer` on a smaller
  * array into one too, by materialising the lazy ArrayBuffer). That malloc
- * dominates a decode profile, so above this size the output is allocated from
- * Node's pre-allocated `Buffer` pool instead when it is available. A `Buffer`
- * is a `Uint8Array` subclass, so callers see the documented type either way.
+ * dominates a decode profile, so larger outputs are carved out of a pooled
+ * chunk instead — the same strategy as Node's `Buffer` pool, but built on a
+ * plain `ArrayBuffer` so it is engine-neutral and browsers benefit too.
  */
 const ON_HEAP_MAX = 64
 
-const hasBufferPool =
-  typeof Buffer === 'function' && typeof Buffer.allocUnsafe === 'function'
+/** Pool chunk size, matching Node's `Buffer` pool. */
+const POOL_SIZE = 8192
+
+let pool = new ArrayBuffer(POOL_SIZE)
+let poolOffset = 0
 
 /**
- * Allocate the decode output: on-heap `Uint8Array` when small enough, pooled
- * `Buffer` when that would malloc and a pool exists (Node). Every byte of the
- * result is subsequently written, so the unzeroed pool memory never leaks.
+ * Allocate the decode output: an on-heap `Uint8Array` when small enough, a
+ * view onto the current pool chunk otherwise, so one malloc amortises over
+ * many decodes. Outputs beyond half a chunk get their own plain allocation.
+ *
+ * Chunks are zero-filled at creation and only ever hold this library's decode
+ * output. A pooled result shares its `ArrayBuffer` with other decode results
+ * (its `byteOffset` may be non-zero), and a chunk stays allocated while any
+ * result carved from it is referenced.
  *
  * @param {number} n
  * @returns {Uint8Array}
  */
 function allocBytes(n) {
-  return n > ON_HEAP_MAX && hasBufferPool
-    ? Buffer.allocUnsafe(n)
-    : new Uint8Array(n)
+  if (n <= ON_HEAP_MAX || n > POOL_SIZE >>> 1) return new Uint8Array(n)
+  if (poolOffset + n > POOL_SIZE) {
+    pool = new ArrayBuffer(POOL_SIZE)
+    poolOffset = 0
+  }
+  const view = new Uint8Array(pool, poolOffset, n)
+  // Keep offsets 8-byte aligned so wider typed-array views can overlay
+  // `result.buffer` at `result.byteOffset`, as they can on a fresh buffer.
+  poolOffset = (poolOffset + n + 7) & ~7
+  return view
 }
 
 /**
