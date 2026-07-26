@@ -326,12 +326,13 @@ export function verify(input) {
 function decodeBytes(s, end) {
   // Exact output size, so no trailing `subarray` is ever needed (a `subarray`
   // materialises an on-heap array's lazy ArrayBuffer, i.e. costs a malloc).
-  // `end * 5` bits yield `bitLen >> 3` whole bytes; when >= 5 bits are left
+  // `end * 5` bits yield `bitLen / 8` whole bytes; when >= 5 bits are left
   // over a whole symbol went unpaired, which cannot be padding, so it flushes
   // as one more byte. Non-canonical padding bits also flush, but only via the
-  // rare grow path at the bottom.
+  // rare grow path at the bottom. Float math, not `>> 3`/`& 7`: `bitLen`
+  // overflows int32 for strings past ~429M chars, within V8's string range.
   const bitLen = end * 5
-  const size = (bitLen >> 3) + ((bitLen & 7) >= 5 ? 1 : 0)
+  const size = Math.floor(bitLen / 8) + (bitLen % 8 >= 5 ? 1 : 0)
   const out = allocBytes(size)
   const blockEnd = end - (end % 8)
 
