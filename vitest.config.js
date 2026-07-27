@@ -26,9 +26,6 @@ export default defineConfig({
           name: 'node',
           environment: 'node',
           include: ['test.js'],
-          // `@scure/base-next` ships TypeScript sources; let Vite transform
-          // them instead of handing the import to Node untouched.
-          server: { deps: { inline: [/@scure\/base-next/] } },
         },
       },
       {

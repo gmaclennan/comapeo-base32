@@ -18,17 +18,6 @@ const CrockfordBase32 = hasBuffer
   : null
 const legacyBase32 = hasBuffer ? (await import('base32')).default : null
 
-// `@scure/base-next` is unreleased upstream `main`, installed from git, so it
-// ships only `index.ts` — Vitest transforms it. Null when that fails.
-let scureNext = null
-try {
-  scureNext = await import('@scure/base-next/index.ts')
-} catch (err) {
-  console.error(
-    `skipping unreleased @scure/base: ${/** @type {Error} */ (err).message}`,
-  )
-}
-
 // Deterministic input generation: a SHA-256 hash chain over a fixed seed
 // (mafintosh's `random-bytes-seed` construction, on Web Crypto so it runs in
 // Node and browsers alike). Every run measures identical inputs, with none of
@@ -143,25 +132,6 @@ for (const [w, buffers] of workloads) {
       opts,
     )
 
-    if (scureNext) {
-      const next = scureNext
-      bench(
-        '@scure/base unreleased crockford',
-        () => {
-          for (const buf of buffers) next.base32crockford.encode(buf)
-        },
-        opts,
-      )
-
-      bench(
-        '@scure/base unreleased rfc4648',
-        () => {
-          for (const buf of buffers) next.base32.encode(buf)
-        },
-        opts,
-      )
-    }
-
     bench(
       'base-x z-base-32',
       () => {
@@ -260,30 +230,6 @@ for (const [w, buffers] of workloads) {
         },
         opts,
       )
-    }
-
-    if (scureNext) {
-      const next = scureNext
-      {
-        const encoded = buffers.map((buf) => next.base32crockford.encode(buf))
-        bench(
-          '@scure/base unreleased crockford',
-          () => {
-            for (const s of encoded) next.base32crockford.decode(s)
-          },
-          opts,
-        )
-      }
-      {
-        const encoded = buffers.map((buf) => next.base32.encode(buf))
-        bench(
-          '@scure/base unreleased rfc4648',
-          () => {
-            for (const s of encoded) next.base32.decode(s)
-          },
-          opts,
-        )
-      }
     }
 
     {
