@@ -188,6 +188,35 @@ describe('decode', () => {
     expect(() => decode('👀')).toThrow(InvalidCharacterError)
   })
 
+  // The decoder validates 8-symbol blocks in one batch, so exercise invalid
+  // characters at every position inside a full block, not just in the tail.
+  it.each([0, 1, 2, 3, 4, 5, 6, 7])(
+    'throws on an invalid character at block position %i',
+    (i) => {
+      const chars = 'ABCDEFGH'.split('')
+      chars[i] = '&'
+      expect(() => decode(chars.join(''))).toThrow(InvalidCharacterError)
+      expect(() => decode(chars.join(''))).toThrow(
+        'Invalid base 32 character found in string: &',
+      )
+    },
+  )
+
+  it('rejects U inside a full block', () => {
+    expect(() => decode('AAAUAAAA')).toThrow(InvalidCharacterError)
+  })
+
+  it('rejects a non-latin1 character inside a full block', () => {
+    expect(() => decode('AAAAAAAŁ')).toThrow(InvalidCharacterError)
+    expect(() => decode('AAAA👀AAA')).toThrow(InvalidCharacterError)
+  })
+
+  it('preserves non-zero trailing bits in long non-canonical input', () => {
+    // Long enough that the output leaves V8's on-heap typed array range, and
+    // ending in unbudgeted padding bits so the one-byte grow path runs.
+    expect(hex(decode('0'.repeat(104) + '01'))).toBe('00'.repeat(66) + '40')
+  })
+
   it.each([123, null, undefined, {}])(
     'throws TypeError for non-string input (%s)',
     (input) => {
@@ -389,9 +418,102 @@ describe('verify', () => {
   })
 })
 
+// Decode outputs of 65-4096 bytes are carved from a shared allocation pool.
+describe('decode allocation pool', () => {
+  it('results held concurrently never alias each other', () => {
+    // Enough pooled-size results to roll the pool over many times.
+    const inputs = Array.from({ length: 500 }, () =>
+      randomBytes(65 + Math.round(Math.random() * 200)),
+    )
+    const results = inputs.map((b) => decode(encode(b)))
+    results.forEach((r, i) => {
+      expect(equal(r, inputs[i]), `input ${i}`).toBe(true)
+    })
+  })
+
+  it('returns plain Uint8Array instances at every size class', () => {
+    for (const n of [10, 100, 5000]) {
+      expect(decode(encode(randomBytes(n))).constructor).toBe(Uint8Array)
+    }
+  })
+
+  it('keeps pooled results 8-byte aligned', () => {
+    for (let i = 0; i < 20; i++) {
+      expect(decode(encode(randomBytes(100))).byteOffset % 8).toBe(0)
+    }
+  })
+
+  it('round-trips across the size-class boundaries', () => {
+    for (const n of [63, 64, 65, 4095, 4096, 4097]) {
+      const b = randomBytes(n)
+      expect(equal(decode(encode(b)), b), `size ${n}`).toBe(true)
+    }
+  })
+
+  it('validates a checksum over a pooled-size payload', () => {
+    const b = randomBytes(100)
+    expect(
+      equal(decode(encode(b, { checksum: true }), { checksum: true }), b),
+    ).toBe(true)
+  })
+
+  it('recovers after a caller transfers a pooled result buffer away', () => {
+    const first = decode(encode(randomBytes(100)))
+    structuredClone(first.buffer, { transfer: [first.buffer] })
+    const b = randomBytes(100)
+    expect(equal(decode(encode(b)), b)).toBe(true)
+  })
+})
+
 describe('large inputs', () => {
   it('round-trips a 20k-byte buffer', () => {
     const big = randomBytes(20_000)
     expect(equal(decode(encode(big)), big)).toBe(true)
+  })
+})
+
+// `encode` switches strategy above a size threshold; pin the two paths
+// against each other around the crossover.
+describe('encode strategy threshold', () => {
+  /** Straightforward reference encoder, one symbol at a time. */
+  const reference = (/** @type {Uint8Array} */ u) => {
+    let out = ''
+    let acc = 0
+    let bits = 0
+    for (const byte of u) {
+      acc = (acc << 8) | byte
+      bits += 8
+      while (bits >= 5) {
+        bits -= 5
+        out += ALPHABET[(acc >>> bits) & 0x1f]
+      }
+    }
+    if (bits > 0) out += ALPHABET[(acc << (5 - bits)) & 0x1f]
+    return out
+  }
+
+  it('agrees with a reference encoder across the crossover', () => {
+    for (let n = 500; n <= 530; n++) {
+      const b = randomBytes(n)
+      expect(encode(b), `length ${n}`).toBe(reference(b))
+      expect(equal(decode(encode(b)), b), `length ${n}`).toBe(true)
+    }
+  })
+
+  it('applies a checksum identically on both paths', () => {
+    for (const n of [8, 32, 512, 513, 2000]) {
+      const b = randomBytes(n)
+      const encoded = encode(b, { checksum: true })
+      expect(verify(encoded), `length ${n}`).toBe(true)
+      expect(equal(decode(encoded, { checksum: true }), b)).toBe(true)
+    }
+  })
+
+  it('encodes multi-byte strings identically on both paths', () => {
+    for (const n of [1, 200]) {
+      const s = '👀 la niña'.repeat(n)
+      expect(str(decode(encode(s)))).toBe(s)
+      expect(encode(s)).toBe(reference(utf8(s)))
+    }
   })
 })
